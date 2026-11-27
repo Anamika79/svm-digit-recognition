@@ -1,0 +1,462 @@
+\documentclass[conference,a4paper]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{placeins}
+\usepackage[hidelinks]{hyperref}
+
+% ---------- Float placement (keeps figures before the references) ----------
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\dblfloatpagefraction}{0.8}
+\setcounter{topnumber}{4}
+\setcounter{dbltopnumber}{4}
+
+% ---------- Guidance text (switch off before submission) ----------
+\newif\ifshowguidance
+\showguidancefalse          % change to \showguidancefalse to hide guidance
+\newcommand{\guide}[1]{\ifshowguidance{\color{gray}\itshape [#1]}\fi}
+
+% ---------- Figure helper: real image if present, placeholder if not ----------
+% \projfig{file name in figures/}{width}{placeholder text}
+\newlength{\projw}\newlength{\projh}
+\newcommand{\projfig}[3]{%
+  \IfFileExists{figures/#1}%
+    {\includegraphics[width=#2]{figures/#1}}%
+    {\setlength{\projw}{#2}\setlength{\projh}{0.6\projw}%
+     \fbox{\parbox[c][\projh][c]{\dimexpr\projw-2\fboxsep-2\fboxrule\relax}{%
+       \centering\footnotesize\color{gray}Placeholder: #3\\[2pt]%
+       \texttt{\detokenize{#1}}}}}}
+
+\begin{document}
+
+% =====================================================================
+\title{Handwritten Digit Recognition Using Linear and Kernel Support Vector Machines\\
+{\large Course Project -- Machine Learning, M.Tech (Artificial Intelligence), Semester I}}
+
+\author{\IEEEauthorblockN{Anamika J}
+\IEEEauthorblockA{\textit{Register No.: TVE26CSAI03}\\
+\textit{Department of Computer Science, College of Engineering, Trivandrum}\\
+{Thiruvananthapuram}, India\\
+{csaip260050@cet.ac.in}}}
+
+\maketitle
+
+% =====================================================================
+\begin{abstract}
+This project studies support vector machines (SVMs) for binary classification, from two-dimensional toy problems
+to the recognition of handwritten digits. A soft-margin linear SVM was trained on two linearly separable
+two-dimensional data sets, and the effect of the regularisation term $C$ on the margin and on the number of
+support vectors was measured. The same model was then used to separate the digits 0 and 1 (12665 training and
+2115 test images). A hard-margin SVM classified every training image correctly and made two test errors (0.095\%).
+Evaluating ten values of $C$ showed that a slightly softer margin can lower the test error to one image (0.047\%),
+and five-fold cross-validation on the training set found such a value without touching the test data. Finally,
+a radial basis function (RBF) kernel SVM was applied to a data set that no straight line can separate (a linear SVM
+misclassifies 7.1\% of its points). Increasing the kernel parameter from 1 to 1000 turned the decision boundary
+from almost straight and underfitting into a fragmented boundary that memorises the training data. The results
+illustrate how $C$ and the kernel width control the complexity of an SVM.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Support vector machine, soft margin, regularisation, RBF kernel, handwritten digit recognition, cross-validation
+\end{IEEEkeywords}
+
+% =====================================================================
+\section{Introduction}
+Automatic recognition of handwritten digits is used in practice to read postal codes, bank cheques and
+forms. The task is hard because each digit can be written in many shapes, thicknesses and slants, so a
+classifier must separate the classes and still tolerate unusual writing.
+
+Support vector machines~\cite{cortes1995,boser1992} are maximum-margin classifiers: among all hyperplanes that
+separate two classes, an SVM chooses the one with the largest distance to the closest training points. A soft-margin
+formulation tolerates some margin violations, and kernel functions extend the method to non-linear boundaries~\cite{scholkopf2002}.
+
+This project has three objectives: (1) to train a soft-margin linear SVM on two two-dimensional data sets and to
+study the effect of the regularisation term $C$; (2) to apply a linear SVM, with and without regularisation, to separate
+handwritten 0s and 1s and to select $C$ properly; and (3) to train an RBF kernel SVM on a data set that is not linearly
+separable and to study the effect of the kernel parameter $\gamma$.
+Section~II reviews the SVM formulation, Section~III describes the data, and Section~IV the implementation.
+The results are given in Section~V, discussed in Section~VI, and Section~VII concludes the paper.
+
+% =====================================================================
+\section{Background}
+Let $\{(\mathbf{x}_i,y_i)\}_{i=1}^{n}$ be the training data with $y_i\in\{-1,+1\}$. The soft-margin SVM solves
+\begin{equation}
+\begin{aligned}
+\min_{\mathbf{w},b,\boldsymbol{\xi}}\ & \tfrac12\|\mathbf{w}\|^2 + C\sum_{i=1}^{n}\xi_i\\
+\text{s.t.}\ & y_i(\mathbf{w}^{T}\mathbf{x}_i+b)\ge 1-\xi_i,\ \ \xi_i\ge 0 .
+\end{aligned}
+\label{eq:primal}
+\end{equation}
+The margin has width $2/\|\mathbf{w}\|$, the slack variable $\xi_i$ measures how far point $i$ violates it, and
+$C>0$ balances a wide margin against few violations. Setting all $\xi_i=0$ (equivalently $C\to\infty$) gives the
+hard-margin SVM, which exists only for linearly separable data.
+
+The dual problem is
+\begin{equation}
+\begin{aligned}
+\max_{\boldsymbol{\alpha}}\ & \sum_i\alpha_i-\tfrac12\sum_{i,j}\alpha_i\alpha_j y_i y_j K(\mathbf{x}_i,\mathbf{x}_j)\\
+\text{s.t.}\ & 0\le\alpha_i\le C,\ \ \sum_i\alpha_i y_i=0,
+\end{aligned}
+\label{eq:dual}
+\end{equation}
+and the classifier is $f(\mathbf{x})=\sum_i\alpha_i y_i K(\mathbf{x}_i,\mathbf{x})+b$. Only the support vectors
+($\alpha_i>0$) contribute. For the linear kernel $K(\mathbf{x}_i,\mathbf{x}_j)=\mathbf{x}_i^{T}\mathbf{x}_j$ and
+$\mathbf{w}=\sum_i\alpha_i y_i\mathbf{x}_i$. If $C$ is larger than every $\alpha_i$ of the hard-margin solution,
+the constraint $\alpha_i\le C$ is never active and the soft-margin solution coincides with the hard-margin one.
+
+The RBF kernel
+\begin{equation}
+K(\mathbf{x}_i,\mathbf{x}_j)=\exp\!\big(-\gamma\|\mathbf{x}_i-\mathbf{x}_j\|^2\big),\qquad\gamma>0,
+\label{eq:rbf}
+\end{equation}
+produces non-linear boundaries. The quantity $1/\sqrt{\gamma}$ acts as the length scale over which a support vector
+influences the decision.
+
+% =====================================================================
+\section{Datasets and Preprocessing}
+\begin{table}[!t]
+\caption{Summary of Data Sets}
+\label{tab:data}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Data set & Features & Train size & Test size\\
+\midrule
+Data set 1 & 2 & 1500 & 500\\
+Data set 2 & 2 & 1500 & 500\\
+Digits 0/1 (images) & 784 & 12665 & 2115\\
+Data set 3 & 2 & 211 & --\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:data} lists the four data sets.
+
+\emph{Data sets 1 and 2.} Each row holds two real-valued features (roughly 35 to 167) and a label $\pm1$. The
+training sets contain 748/752 and 729/771 positive/negative points, and the test sets 252/248 and 271/229.
+In data set 1 the two classes are far apart, whereas in data set 2 they nearly touch.
+
+\emph{Digits.} Each line of the files stores one $28\times28$ grey-scale image in sparse form,
+\texttt{label index:value \dots}, with 1-based pixel indices and only the non-zero pixels listed. Label $+1$ is
+the digit 1 and $-1$ is the digit 0. The training set has 6742 ones and 5923 zeros; the test set has 1135 ones and
+980 zeros. These are the 0 and 1 classes of the MNIST database~\cite{lecun1998}. Every image was converted to a
+dense 784-dimensional vector and the grey values were scaled from $[0,255]$ to $[0,1]$.
+
+\emph{Data set 3.} It has 211 two-dimensional points (106 positive, 105 negative) with coordinates between about $-0.66$ and
+$0.57$, and is used only for training.
+
+% =====================================================================
+\section{Methodology}
+All experiments were run in Google Colab with Python, NumPy and Matplotlib. The SVMs were trained with the
+\texttt{SVC} class of scikit-learn~\cite{pedregosa2011}, which wraps the LIBSVM solver~\cite{chang2011} for the dual
+problem~\eqref{eq:dual}.
+
+\emph{Soft-margin linear SVM (Part~1).} \texttt{SVC(kernel="linear", C=$C$)} was fitted to the training set of each
+data set. The decision boundary $f(\mathbf{x})=0$ and the margins $f(\mathbf{x})=\pm1$ were drawn by evaluating
+$f$ on a dense grid. The test error is the fraction of misclassified test points. To study $C$, ten values from
+$10^{-6}$ to $10^{3}$ were used, and for each the training and test errors, the number of support vectors and the margin
+$2/\|\mathbf{w}\|$ were recorded.
+
+\emph{Hard-margin SVM (Part~2(i)).} A hard margin (all $\xi_i=0$) was approximated by $C=10^{6}$, far above the
+largest dual variable, which was checked afterwards. Because this model makes no training errors, a training failure
+was illustrated with a strongly regularised model ($C=10^{-4}$), and one image it misclassifies was analysed.
+The weight vector $\mathbf{w}$ was displayed as a $28\times28$ image, and the training images with the smallest
+functional margin $y_i f(\mathbf{x}_i)$ were inspected.
+
+\emph{Choosing $C$ (Part~2(ii)).} Ten values of $C$ on an approximately logarithmic scale between $10^{-4}$ and $10$ were
+tried. The upper end lies far above the largest dual variable of the hard-margin solution, where nothing changes, and
+below $10^{-4}$ errors increase visibly. To choose $C$ without using the test set, stratified five-fold cross-validation
+was run on the training set, and the model with the lowest cross-validation error was then evaluated once on the test set.
+
+\emph{RBF kernel SVM (Part~3).} \texttt{SVC(kernel="rbf", gamma=$\gamma$, C=1)} was trained on data set 3 for
+$\gamma\in\{1,10,100,1000\}$. A linear SVM with $C=1000$ was also trained to test whether a linear boundary exists.
+Error is always the fraction of misclassified examples.
+
+% =====================================================================
+\section{Experiments and Results}
+
+% ---------------------------------------------------------------------
+\subsection{Part 1: Soft-Margin SVM on Two-Dimensional Data}
+Fig.~\ref{fig:ds_train} shows the boundary for $C=1$. For data set 1 the SVM found
+$\mathbf{w}=(-0.125,\,0.127)$, $b=-0.298$, a margin of 11.24 and 3 support vectors. For data set 2 it found
+$\mathbf{w}=(-1.056,\,1.077)$, $b=-2.762$, a margin of only 1.33 and 5 support vectors. Both models classify all
+training points correctly and misclassify none of the 500 test points of their data set (test error 0, Fig.~\ref{fig:ds_test}).
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_ds_train.png}{0.78\textwidth}{training data with decision boundary, margins and support vectors}
+\caption{Linear soft-margin SVM ($C=1$) on the training data of data set 1 (left) and data set 2 (right). The solid
+line is $f(\mathbf{x})=0$, the dashed lines are $f(\mathbf{x})=\pm1$, and circled points are support vectors.}
+\label{fig:ds_train}
+\end{figure*}
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_ds_test.png}{0.78\textwidth}{test data with decision boundary}
+\caption{Test points of data set 1 (left) and data set 2 (right) with the boundary learned from the training data
+($C=1$). No test point is misclassified.}
+\label{fig:ds_test}
+\end{figure*}
+
+Ten values of $C$ were tried, from $10^{-6}$ to $10^{3}$ (a wide range chosen so that both under- and over-regularised models appear).
+Table~\ref{tab:C12} lists the errors, support vectors and margins; Figs.~\ref{fig:Call1} and~\ref{fig:Call2} show the boundary for every
+value, and Fig.~\ref{fig:errC12} plots the error, the number of support vectors and the margin against $C$. Both sets are linearly separable, and for
+$C\ge10^{-4}$ the training and test errors are zero on both. A small $C$ makes violations cheap: the margin becomes wide and
+most points turn into support vectors (1274 and 1450 at $C=10^{-6}$). A large $C$ approaches the hard-margin SVM with a narrow margin
+and only 3 support vectors. For data set 1 the solution stops changing at $C\approx0.1$ (margin 11.24); for data set 2 the margin
+keeps shrinking until $C\approx10$ (margin 1.18), because its classes are much closer. If $C$ is too small the model underfits: at
+$C=10^{-6}$ the errors on data set 2 rise to 8.4\% (training) and 9.8\% (test).
+
+\begin{table*}[!t]
+\caption{Effect of $C$ on the Linear SVM for Data Sets 1 and 2 (SV = number of support vectors, margin $=2/\|\mathbf{w}\|$)}
+\label{tab:C12}
+\centering
+\begin{tabular}{@{}r cccc cccc@{}}
+\toprule
+ & \multicolumn{4}{c}{Data set 1} & \multicolumn{4}{c}{Data set 2}\\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+$C$ & Train err. & Test err. & SV & Margin & Train err. & Test err. & SV & Margin\\
+\midrule
+$10^{-6}$ & 0.0000 & 0.0000 & 1274 & 73.28 & 0.0840 & 0.0980 & 1450 & 85.38\\
+$10^{-5}$ & 0.0000 & 0.0000 & 444 & 35.47 & 0.0007 & 0.0000 & 750 & 30.30\\
+$10^{-4}$ & 0.0000 & 0.0000 & 116 & 20.71 & 0.0000 & 0.0000 & 284 & 15.22\\
+$10^{-3}$ & 0.0000 & 0.0000 & 24 & 14.26 & 0.0000 & 0.0000 & 104 & 7.59\\
+$10^{-2}$ & 0.0000 & 0.0000 & 4 & 11.56 & 0.0000 & 0.0000 & 35 & 4.21\\
+$10^{-1}$ & 0.0000 & 0.0000 & 3 & 11.24 & 0.0000 & 0.0000 & 10 & 2.41\\
+$1$ & 0.0000 & 0.0000 & 3 & 11.24 & 0.0000 & 0.0000 & 5 & 1.33\\
+$10$ & 0.0000 & 0.0000 & 3 & 11.24 & 0.0000 & 0.0000 & 3 & 1.18\\
+$10^{2}$ & 0.0000 & 0.0000 & 3 & 11.24 & 0.0000 & 0.0000 & 3 & 1.18\\
+$10^{3}$ & 0.0000 & 0.0000 & 3 & 11.24 & 0.0000 & 0.0000 & 3 & 1.18\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_C_all_ds1.png}{0.95\textwidth}{data set 1, ten values of C}
+\caption{Data set 1: decision boundary (solid) and margins (dashed) of the linear SVM for ten values of $C$ from $10^{-6}$ to $10^{3}$.
+The number of support vectors (SV) is given in each title.}
+\label{fig:Call1}
+\end{figure*}
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_C_all_ds2.png}{0.95\textwidth}{data set 2, ten values of C}
+\caption{Data set 2: the same study as Fig.~\ref{fig:Call1}. The classes are much closer, so the margin keeps shrinking up to $C\approx10$.}
+\label{fig:Call2}
+\end{figure*}
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_err_C_ds.png}{0.88\textwidth}{error, support vectors and margin versus C}
+\caption{Effect of $C$ on data set 1 (top row) and data set 2 (bottom row): training and test error (left), number of support vectors
+(middle) and margin width $2/\|\mathbf{w}\|$ (right).}
+\label{fig:errC12}
+\end{figure*}
+
+% ---------------------------------------------------------------------
+\subsection{Part 2(i): Hard-Margin SVM on Digits 0 and 1}
+\begin{figure}[!t]
+\centering
+\projfig{fig_digit_samples.png}{\columnwidth}{sample digits and class averages}
+\caption{Training samples: six 0s (top row), six 1s (bottom row), and the average 0 and average 1 of the training set.}
+\label{fig:samples}
+\end{figure}
+
+Samples of the data are shown in Fig.~\ref{fig:samples}. The hard-margin SVM converged with 84 support vectors; the largest dual
+variable is $\alpha_{\max}=0.395$, and the smallest functional margin over the training set is $\min_i y_if(\mathbf{x}_i)=0.9995\approx1$. The results are:
+\begin{itemize}
+\item training error $=0/12665=0$;
+\item test error $=2/2115=0.00095$ (0.095\%).
+\end{itemize}
+The training error is zero because the 0/1 training set is linearly separable in the 784-dimensional pixel space, so
+there is no misclassified training image to pick for the hard-margin model. To study a training failure, a strongly regularised
+model with $C=10^{-4}$ was used instead; it misclassifies 30 training images, and the first of them, training image \#56
+(Fig.~\ref{fig:mis}), was analysed.
+
+Image \#56 is a 1 written in the style with a hooked head and a long foot stroke. It has 165 inked pixels, while an
+average 1 has about 86 and an average 0 about 192, and its ink is spread over a wide area. A linear SVM only forms a weighted sum of
+pixel intensities, so such an image gets a decision value of $f(\mathbf{x})=-0.05$ for $C=10^{-4}$ and is assigned to class 0. The hard-margin SVM
+classifies it correctly, but only as a support vector with $yf(\mathbf{x})=1.0$. The two test errors of the hard-margin SVM show the same
+weakness: \#1664 is a very thick, slanted 1 and \#2031 is an open, broken 0 with a stray blob.
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_misclassified.png}{0.9\textwidth}{misclassified images}
+\caption{From left: training image \#56, a 1 misclassified as a 0 by the model with $C=10^{-4}$; the average 0 and average 1
+of the training set; and the two test images misclassified by the hard-margin SVM.}
+\label{fig:mis}
+\end{figure*}
+
+Fig.~\ref{fig:weights} explains why. The weight image is mainly positive (red) near the centre, where a 1 has its ink, and mostly
+negative (blue) around it, where a 0 has its strokes. The training images lying exactly on the margin are the atypical ones: a 0 with an
+inward hook, a very slanted thin 1 with a stray dot, a 1 with a doubled stroke and a 1 with a heavy foot and head.
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_weights.png}{0.9\textwidth}{weights and margin images}
+\caption{Left: weight vector $\mathbf{w}$ of the hard-margin SVM as a $28\times28$ image (red pushes towards digit 1, blue
+towards digit 0). Right: the four training images with the smallest $y_if(\mathbf{x}_i)$; all are support vectors on the margin.}
+\label{fig:weights}
+\end{figure*}
+
+% ---------------------------------------------------------------------
+\subsection{Part 2(ii): Choosing the Regularisation Term $C$}
+\emph{Range of $C$.} The largest dual variable of the hard-margin solution is about 0.4, so for every $C$ above this value the box constraint
+$\alpha_i\le C$ is inactive and the hard-margin solution is recovered. Errors start to appear at about $C=10^{-4}$. Ten values on an
+approximately logarithmic scale between $10^{-4}$ and $10$ were therefore evaluated.
+
+The results are in Table~\ref{tab:digitsC}, which also gives the five-fold cross-validation error, and in Figs.~\ref{fig:digitsC}
+and~\ref{fig:weightsC}. The training error
+falls steadily as $C$ grows, from 30 mistakes at $C=10^{-4}$ to 2 at $C=0.1$, and is zero from $C=0.3$ on. The test error is not
+monotone.
+
+\emph{A. Best training error.} The training error first reaches its minimum of zero at $C=0.3$ and stays zero for every larger $C$.
+
+\emph{B. Comparison with Part 2(i).} At $C=0.3$ the test error is $2/2115=0.00095$, exactly equal to that of the hard-margin SVM. Since
+$0.3$ is close to $\alpha_{\max}$ and every larger value gives the hard-margin solution, the test predictions do not change.
+
+\emph{C. Optimising $C$ for the test error.} The lowest test error, $1/2115=0.00047$, occurs at $C=0.01$ and $C=0.03$, although the training
+error there is not zero: a slightly softer margin ignores a few unusual training images and generalises better. Choosing $C$ by looking at the test
+error, however, tunes on the test set and gives an optimistic estimate. The proper procedure is cross-validation on the training data.
+Five-fold cross-validation selects $C=0.03$ (CV error 0.00095), and this model makes one test error (0.047\%).
+
+\begin{table}[!t]
+\caption{Linear SVM on Digits 0/1 for Different $C$ (number of misclassified images in parentheses)}
+\label{tab:digitsC}
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}rcccc@{}}
+\toprule
+$C$ & Train error & Test error & SV & 5-fold CV\\
+\midrule
+$10^{-4}$ & 0.00237 (30) & 0.00189 (4) & 1808 & 0.00237\\
+$3\times10^{-4}$ & 0.00197 (25) & 0.00095 (2) & 897 & 0.00205\\
+$10^{-3}$ & 0.00142 (18) & 0.00095 (2) & 436 & 0.00174\\
+$3\times10^{-3}$ & 0.00118 (15) & 0.00095 (2) & 240 & 0.00150\\
+$10^{-2}$ & 0.00071 (9) & 0.00047 (1) & 151 & 0.00111\\
+$3\times10^{-2}$ & 0.00047 (6) & 0.00047 (1) & 103 & \textbf{0.00095}\\
+$10^{-1}$ & 0.00016 (2) & 0.00095 (2) & 89 & 0.00134\\
+$0.3$ & 0.00000 (0) & 0.00095 (2) & 85 & 0.00111\\
+$1$ & 0.00000 (0) & 0.00095 (2) & 84 & 0.00111\\
+$10$ & 0.00000 (0) & 0.00095 (2) & 84 & 0.00111\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_digits_C.png}{0.92\textwidth}{error versus C for the digits}
+\caption{Linear SVM on digits 0/1 for ten values of $C$. Left: training, test and five-fold cross-validation error (\%); the dotted line is the
+test error of the hard-margin SVM. Middle: number of misclassified training and test images. Right: number of support vectors.}
+\label{fig:digitsC}
+\end{figure*}
+
+\begin{figure}[!t]
+\centering
+\projfig{fig_weights_C.png}{\columnwidth}{weight images for different C}
+\caption{Weight vector $\mathbf{w}$ for $C=10^{-4},10^{-2},10^{-1}$ and $1$ (red pushes towards digit 1, blue towards digit 0). For small $C$ the
+weights are smooth and dominated by the average class shapes; for larger $C$ they become noisy and are shaped by individual hard examples.}
+\label{fig:weightsC}
+\end{figure}
+
+% ---------------------------------------------------------------------
+\subsection{Part 3: RBF Kernel SVM}
+Fig.~\ref{fig:ds3} shows data set 3. A straight line cannot separate the positives from the negatives: even a linear SVM with
+$C=1000$, which tries hard to fit every point, misclassifies 15 of the 211 points (error 0.0711). Hence \textbf{no linear decision
+boundary exists} for this data set.
+
+\begin{figure}[!t]
+\centering
+\projfig{fig_ds3.png}{0.8\columnwidth}{data set 3}
+\caption{Data set 3: positive (blue dots) and negative (red crosses) training points.}
+\label{fig:ds3}
+\end{figure}
+
+An RBF SVM with $\gamma=100$ and $C=1$ gives the curved boundary of Fig.~\ref{fig:rbf100}, with a training error of 0.0569 (12 points)
+and 126 support vectors. Fig.~\ref{fig:gamma} and Table~\ref{tab:gamma} compare $\gamma=1,10,100$ and $1000$ with $C=1$ fixed.
+For $\gamma=1$ each kernel is wider than the whole data set, so the boundary is almost straight and the model underfits (error 0.0806). For
+$\gamma=10$ the boundary starts to follow the data. For $\gamma=100$ it becomes wavy and traces the local shape of the class border.
+For $\gamma=1000$ every kernel covers only its immediate neighbourhood, the boundary breaks into small islands, 208 of the 211 points are
+support vectors and the training error is zero, which is clear overfitting.
+
+\begin{figure}[!t]
+\centering
+\projfig{fig_rbf100.png}{0.8\columnwidth}{RBF boundary}
+\caption{Decision boundary of the RBF SVM with $\gamma=100$ and $C=1$ (training error 0.0569).}
+\label{fig:rbf100}
+\end{figure}
+
+\begin{figure*}[!t]
+\centering
+\projfig{fig_gamma.png}{0.9\textwidth}{boundaries for different gamma}
+\caption{Decision boundaries of the RBF SVM ($C=1$) for $\gamma=1,10,100$ and $1000$ (left to right).}
+\label{fig:gamma}
+\end{figure*}
+
+\begin{table}[!t]
+\caption{RBF Kernel SVM on Data Set 3 ($C=1$)}
+\label{tab:gamma}
+\centering
+\begin{tabular}{@{}rccc@{}}
+\toprule
+$\gamma$ & Training error & Misclassified & SV\\
+\midrule
+1 & 0.0806 & 17 & 94\\
+10 & 0.0664 & 14 & 73\\
+100 & 0.0569 & 12 & 126\\
+1000 & 0.0000 & 0 & 208\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Discussion}
+The experiments show the two hyperparameters that control SVM complexity. In the linear case, $C$ trades margin width against training
+errors. A small $C$ gives a wide margin defined by many support vectors, but a value that is too small underfits (data set 2 at $C=10^{-6}$).
+A large $C$ reduces to the hard-margin SVM, whose boundary rests on a few points. Data sets 1 and 2 show that the useful range of $C$ depends on how
+close the classes are, and that increasing $C$ beyond the largest dual variable of the hard-margin solution has no effect.
+
+On the digits every tested model performs very well: the test error never exceeds 0.19\%, and for $C\ge3\times10^{-4}$ it is at most 0.095\%.
+The hard-margin SVM fits the training set perfectly but is not the best on the test set. A little slack ($C\approx0.01$--$0.03$) halves the test
+error from two images to one. These differences amount to one or two images out of 2115, so they are not statistically strong, but cross-validation
+nevertheless picks a value from the good region without using the test set.
+
+The misclassified images expose the limitation of a linear model on raw pixels: it matches ink against a fixed template, so very thick or
+very slanted 1s, hooked or broken 0s and images with stray marks end up near or across the boundary.
+
+For the RBF kernel, $\gamma$ plays a role similar to $C$. A small $\gamma$ gives a smooth, nearly linear boundary that underfits, and
+a large $\gamma$ memorises the training set. Since the training error always favours the largest $\gamma$, in practice $\gamma$ and $C$ should
+be selected by cross-validation; for data set 3 values around 10--100 look like a reasonable compromise.
+
+% =====================================================================
+\section{Conclusion}
+We trained linear and RBF-kernel SVMs on two-dimensional data and on handwritten digits. On the two separable 2-D data sets
+the SVM reached zero test error; lowering $C$ widened the margin and increased the number of support vectors, and a very small $C$ caused
+underfitting. On the 0/1 digits the hard-margin SVM had zero training error and a test error of 0.095\%, and a moderately regularised model
+($C=0.03$, chosen by five-fold cross-validation) reduced the test error to 0.047\%. Remaining errors come from atypical writing styles that a
+linear pixel template cannot capture. On a non-separable 2-D data set the RBF kernel produced non-linear boundaries whose complexity grows with
+$\gamma$, from underfitting at $\gamma=1$ to overfitting at $\gamma=1000$.
+
+% =====================================================================
+\FloatBarrier
+\section*{Code Availability}
+The code was written and run in Google Colab and is in the submitted Jupyter notebook \texttt{SVM\_Course\_Project.ipynb}. It uses NumPy, Matplotlib and scikit-learn.
+The data files are uploaded to the Colab session at the start of the notebook.
+
+% =====================================================================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
